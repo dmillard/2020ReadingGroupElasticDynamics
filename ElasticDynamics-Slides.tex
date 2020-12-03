@@ -1,0 +1,313 @@
+\documentclass{article}
+\usepackage[
+  papersize={5in,3in},
+  voffset=0.05in,
+  headsep=0.1in,
+  footskip=0.2in,
+  lmargin=0.2in,
+  rmargin=0.2in,
+  tmargin=0.4in,
+  bmargin=0.4in
+]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{tcolorbox}
+\usepackage{physics}
+\usepackage{algorithm2e}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small{\textsc{\leftmark}}}
+\lfoot{\small{\textsc{USC Robotic Embedded Systems Lab}}}
+\rfoot{\small{\textsc{Slide \thepage}}}
+\renewcommand{\footrulewidth}{\headrulewidth}
+
+\title{Elastic Solid Simulation}
+\author{Presented by David Millard}
+\date{December 03, 2020}
+
+\newcommand{\R}[1]{\ensuremath{\mathbb{R}^{#1}}}
+\newcommand{\Rx}[2]{\ensuremath{\mathbb{R}^{#1 \times #2}}}
+\newcommand{\tpose}[1]{\ensuremath{#1^\top}}
+\newcommand{\vx}{\ensuremath{\vec{x}}}
+\newcommand{\vxstar}{\ensuremath{\vec{x}_*}}
+\newcommand{\vX}{\ensuremath{\vec{X}}}
+\newcommand{\vXstar}{\ensuremath{\vec{X}_*}}
+\newcommand{\vphi}{\ensuremath{\vec{\phi}}}
+\newcommand{\vphiX}{\ensuremath{\vec{\phi}(\vX)}}
+\newcommand{\vphiXstar}{\ensuremath{\vec{\phi}(\vXstar)}}
+\newcommand{\F}{\ensuremath{\mathbf{F}}}
+\newcommand{\I}{\ensuremath{\mathbf{I}}}
+\newcommand{\Ephi}{\ensuremath{E[\vphi]}}
+\newcommand{\PsiphiX}{\ensuremath{\Psi[\vphi; \vX]}}
+\newcommand{\PsiphiXstar}{\ensuremath{\Psi[\vphi; \vXstar]}}
+\newcommand{\PsiF}{\ensuremath{\Psi(\F)}}
+\newcommand{\PsiFi}{\ensuremath{\Psi(\F_i)}}
+\newcommand{\vf}{\ensuremath{\vec{f}}}
+\newcommand{\fX}{\ensuremath{\vf(\vX)}}
+\newcommand{\tauX}{\ensuremath{\vec{\tau}(\vX)}}
+\newcommand{\fagg}{\ensuremath{\vec{f}_{\text{aggregate}}}}
+\renewcommand{\P}{\ensuremath{\mathbf{P}}}
+\newcommand{\PF}{\ensuremath{\P(\F)}}
+\newcommand{\E}{\ensuremath{\mathbf{E}}}
+\newcommand{\eps}{\ensuremath{\mathbf{\epsilon}}}
+\newcommand{\GreenDefn}{\ensuremath{\E = \frac{1}{2}(\tpose{\F}\F - \I)}}
+\newcommand{\bx}{\ensuremath{\mathbf{x}}}
+\newcommand{\Ni}{\ensuremath{\mathcal{N}_i}}
+\newcommand{\Ds}{\ensuremath{\mathbf{D}_s}}
+\newcommand{\Dm}{\ensuremath{\mathbf{D}_m}}
+\newcommand{\Ti}{\ensuremath{\mathcal{T}_i}}
+\renewcommand{\H}{\ensuremath{\mathbf{H}}}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\section{Overview}
+
+\vspace{1em}
+{\huge
+  A tutorial on finite-element schemes for simulating elastic solids. Largely
+  drawn from \cite{sifakis2012fem}
+}
+
+\pagebreak
+\section{Definitions}
+
+\subsection{Reference configuration}
+
+$\Omega \subset \R{3}$ is the volumetric domain occupied by an object.
+
+$\vX \in \Omega$ is a point in this undeformed domain.
+
+\begin{tcolorbox}[title=Note]
+  Capital letters $\vX$ are used for \emph{undeformed} points. Lower case
+  letters $\vx$ will be used for \emph{deformed} points.
+\end{tcolorbox}
+
+\pagebreak
+\subsection{Deformation function}
+When an object deforms, each point $\vX$ is displaced to $\vx$.
+
+This transform is the \emph{deformation function}.
+
+$$\vphi : \R{3} \to \R{3}$$
+$$\vx = \vphiX$$
+
+\subsection{Deformation gradient tensor}
+
+The \emph{deformation gradient} tensor $\F \in \Rx{3}{3}$ is the
+Jacobian of $\vphi$.
+
+\pagebreak
+\begin{tcolorbox}[title=Examples]
+  \begin{description}
+    \item[Translation] $$\vphiX = \vX + \vec{t}, \quad \F = \pdv{\vphiX}{\vX} = \I$$
+    \item[Uniform Scaling] $$\vphiX = \gamma\vX, \quad \F = \gamma\I$$
+    \item[Rotation] $$\vphiX = \mathbf{R}_{\theta}\vX, \quad F = \mathbf{R}_{\theta}\I$$
+  \end{description}
+\end{tcolorbox}
+
+\pagebreak
+\subsection{Strain energy}
+
+Elasticity: Deformation causes potential energy, called \emph{strain energy} $\Ephi$.
+
+For \emph{hyperelastic} materials, energy depends only on \emph{final} deformed shape.
+
+Locally, there is an \emph{energy density function} $\PsiphiX$ such that
+
+$$\Ephi = \int_\Omega \PsiphiX d\vX$$
+
+\pagebreak
+We will approximate strain energy density $\PsiphiXstar$ at a particular point $\vXstar$.
+\begin{align*}
+  \vphiX & \approx \vphiXstar + \left. \pdv{\vphi}{\vX} \right\rvert_{\vXstar} (\vX - \vXstar)        \\
+         & = \F(\vXstar)\vX + \underbrace{\vxstar - \F(\vXstar)\vXstar}_{\text{constant translation}}
+\end{align*}
+
+Translation alone doesn't effect strain energy, so $\PsiphiX \approx \PsiF$.
+
+Different $\Psi$ will result in different material properties, we will revisit this.
+
+\pagebreak
+\subsection{Forces and traction}
+What elastic forces are caused by deformation?
+
+Continuous objects have a \emph{force density function} $\fX$
+$$\fagg(A) = \int_{A \subset \Omega} \fX d\vX$$
+Along the surface, this is replaced with \emph{traction} $\tauX$. This distinction
+disappears with discretization.
+$$\fagg(B) = \oint_{B \subset \partial \Omega} \tauX dS$$
+
+\pagebreak
+\subsection{First Piola-Kirchoff stress tensor}
+A unifying concept for force and traction is the \emph{stress tensor}.
+
+We consider the \emph{first Piola-Kirchoff stress tensor} $\P \in \Rx{3}{3}$ with properties
+
+\begin{itemize}
+  \item Traction at $\vX \in \partial\Omega$ with (reference) surface normal
+        $\vec{N}$ is $$\tauX = -\P \cdot \vec{N}$$
+  \item Internal force density is
+        $$\fX = \div{\P(\vX)} \quad \text{i.e.} \quad f_i = \pdv{P_{i1}}{X_1} + \pdv{P_{i2}}{X_2} + \pdv{P_{i3}}{X_3} $$
+\end{itemize}
+
+\pagebreak
+For hyperelastic matrials, $$\P(F) = \pdv{\PsiF}{\F}$$
+
+\begin{tcolorbox}[title=Example]
+  Consider $\PsiF = (k/2) \left\| \F - \I \right\|^2_{\F}$.
+  $$\delta \PsiF = (k/2)\delta[(\F-\I):(\F-\I)] = k(\F-\I):\delta\F = \pdv{\Psi}{\F}:\delta\F$$
+  and so
+  $P(\F) = k(\F-\I)$
+  and internal forces are $\vf = \div P = k\Delta\vphi$
+\end{tcolorbox}
+
+\pagebreak
+\subsection{Lam\'e parameters $\mu$, $\lambda$}
+Parameters used to parameterize materials (e.g.\ rubber vs steel).
+
+Related to the Young's modulus $k$ of elasticity and Poisson ratio $\nu$ of
+incompressibility.
+$$\mu = \frac{k}{2(1 + \nu)}$$
+$$\lambda = \frac{k\nu}{(1 + \nu)(1 - 2\nu)}$$
+
+\pagebreak
+\section{Material models}
+A material can be described by Piola stress $\PF$ or $\PsiF$
+
+\subsection{Strain measures}
+$\F$ is unintuitive to reason about. Instead we use \emph{strain measures},
+which
+
+\begin{itemize}
+  \item Quantify severity of deformation
+  \item Discard irrelevant information (like rotations)
+\end{itemize}
+
+\pagebreak
+\subsection{Green strain tensor}
+The \emph{Green strain tensor} $\E \in \Rx{3}{3}$ is
+$$\GreenDefn$$
+and has several desirable properties
+\begin{enumerate}
+  \item At rest $\vphiX = \vX$, $\F = \I$, and $\E = 0$
+  \item For rigid motion $\vphiX = \mathbf{R}\vX + \vec{t}$, $\F = \mathbf{R}$, and $\E = \tpose{\mathbf{R}}\mathbf{R} - \I = 0$
+  \item Generally $\F = \mathbf{R}\mathbf{S}$ and $\E = \frac{1}{2}(\mathbf{S}^2 - I)$, discarding rotations
+\end{enumerate}
+
+\pagebreak
+\subsection{Small strain tensor}
+The \emph{small strain tensor} $\eps$ is a linearization of $\E$
+$$\eps = \frac{1}{2}(\F + \tpose{\F}) - \I$$
+
+\subsection{Linear elasticity}
+The simplest constitutive model, which is valid for small relative motions
+$$\PsiF = \mu\eps:\eps + \frac{\lambda}{2}\mathrm{tr}^2(\eps)$$
+$$\P(\F) = 2\mu\eps + \lambda \mathrm{tr}(\eps)\I$$
+
+\pagebreak
+\subsection{St. Venant-Kirchhoff model}
+Improve the approximation by using $\E$ instead of $\eps$
+$$\PsiF = \mu\E:\E + \frac{\lambda}{2}\mathrm{tr}^2(\E)$$
+$$\P(\F) = \F[2\mu\E + \lambda\mathrm{tr}(\E)\I]$$
+An recall that the Green strain $\E$ is
+$$\GreenDefn$$
+Rotationally invariant, but poor resistance to forceful compression.
+
+\pagebreak
+\subsection{Other models}
+Please refer to \cite{sifakis2012fem} for
+\begin{itemize}
+  \item Corotated linear elasticity
+  \item Isotropic materials
+  \item The Neohookean model
+\end{itemize}
+
+\pagebreak
+\section{Discretization}
+
+Compute $\vphiX$ on a finite number of nodes $\bx = \{\vX_i\}$.
+
+Compute strain energy on small elements $e$, defined by the points in $\bx$.
+$$\E[\phi] := \int_\Omega \PsiF d\vX$$
+becomes
+$$\sum_e \int_{\Omega_e} \Psi\left(\hat\F(\vX; \mathbf{x})\right)d\vX$$
+
+\pagebreak
+\subsection{Nodal forces}
+Compute force $\vf_i$ per node $i$, summed from elements in its neighborhood $\Ni$
+$$\vf_i(\bx) = \sum_{e\in\Ni} \vf_i^e(\bx), \quad \text{where} \quad \vf_i^e(\bx) = -\pdv{E^e(\bx)}{\vx_i}$$
+
+\subsection{Linear tetrahedral elements}
+Build elements from four points, and linearize $\phi$ per element.
+$$
+  \hat{\phi}(\vX) = \F\vX + \vec{b}
+$$
+
+\pagebreak
+It is possible to recover $\F$ from the tetrahedron vertices.
+\begin{align*}
+  \begin{bmatrix}
+    \vx_1 - \vx_4 \quad
+    \vx_2 - \vx_4 \quad
+    \vx_3 - \vx_4
+  \end{bmatrix} & = \F\begin{bmatrix}
+    \vX_1 - \vX_4 \quad
+    \vX_2 - \vX_4 \quad
+    \vX_3 - \vX_4
+  \end{bmatrix} \\
+  \Ds                       & =\F\Dm                         \\
+  \F(x)                     & =\Ds(\bx)\Dm^{-1}
+\end{align*}
+Where $\Ds$ is called the \emph{deformed shape matrix} and $\Dm$ is called
+the \emph{reference shape matrix}.
+
+Since $\F$ is constant over the element, strain energy reduces to
+$$
+  E_i = \int_{\Ti} \PsiF d\vX = \PsiFi\int_{\Ti}d\vX = W \cdot \PsiFi
+$$
+
+\pagebreak
+\subsection{Discretized algorithm}
+\begin{algorithm}[H]
+  \SetAlgoLined
+  $f = 0$\;
+  \ForEach{$\mathcal{T}_e = (i, j, k, l) \in \mathcal{M}$}{
+  $\Ds = \begin{bmatrix}
+      \vx_1 - \vx_4 \quad
+      \vx_2 - \vx_4 \quad
+      \vx_3 - \vx_4
+    \end{bmatrix}$\;
+  $\F = \Ds\Dm^e{}^{-1}$\;
+  $\P = \P(F)$\;
+  $\H = -W\P(\Dm^e{}^{-1}){}^\top$\;
+  $
+    \vf_i += \vec{h}_1,
+    \vf_j += \vec{h}_2,
+    \vf_k += \vec{h}_3
+  $\;
+  $\vf_l += -(\vec{h}_1, \vec{h}_2, \vec{h}_3)$\;
+  }
+\end{algorithm}
+
+Where $
+  \H = \begin{bmatrix}
+    \vec{h_1} \quad
+    \vec{h_2} \quad
+    \vec{h_3}
+  \end{bmatrix}
+$ and $W = \frac{1}{6}\det(\Dm)$
+
+\pagebreak
+\bibliographystyle{apalike}
+\bibliography{ElasticDynamics-Slides}
+
+\end{document}
